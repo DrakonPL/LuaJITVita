@@ -1,0 +1,7 @@
+build/
+results/
+*.vpk
+*.velf
+*.self
+*.log
+libs/

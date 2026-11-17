@@ -71,6 +71,10 @@ The output is `src/libluajit.a`. The headers are `lua.h`, `lualib.h`, `lauxlib.h
 - Only one thread may run JIT code at a time. The VM domain has one state for the whole process.
 - At 333 MHz, the trace compiler is not free. In a 2 s profile of `ray`, it took 7 % of the time.
 
+## The Test App
+
+The folder `LuaJitBench/` holds the test app that gave the results above. It runs each bench with the JIT off and on, counts the traces, and checks the results. It also has a VM block probe, the struct layout check of `buildvm`, and a Docker image for the builds. See `LuaJitBench/README.md`.
+
 ## Credits
 
 - LuaJIT: Mike Pall, MIT license.
