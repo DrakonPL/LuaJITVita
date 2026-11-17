@@ -366,7 +366,8 @@ endif
 
 ifneq ($(HOST_SYS),$(TARGET_SYS))
   ifeq (PSP2,$(TARGET_SYS))
-    HOST_XCFLAGS+= -DLUAJIT_OS=LUAJIT_OS_PSP2 -DLUAJIT_USE_SYSMALLOC
+    # arm-vita-eabi-gcc uses short enums. buildvm must see the same struct layout.
+    HOST_XCFLAGS+= -DLUAJIT_OS=LUAJIT_OS_PSP2 -DLUAJIT_USE_SYSMALLOC -fshort-enums
   else
   ifeq (Windows,$(TARGET_SYS))
     HOST_XCFLAGS+= -malign-double -DLUAJIT_OS=LUAJIT_OS_WINDOWS
