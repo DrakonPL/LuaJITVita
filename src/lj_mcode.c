@@ -38,13 +38,23 @@
 void sys_icache_invalidate(void *start, size_t len);
 #endif
 
+#if LJ_TARGET_PSP2
+#include <psp2/kernel/sysmem.h>
+#endif
+
 /* Synchronize data/instruction cache. */
 void lj_mcode_sync(void *start, void *end)
 {
 #ifdef LUAJIT_USE_VALGRIND
   VALGRIND_DISCARD_TRANSLATIONS(start, (char *)end-(char *)start);
 #endif
-#if LJ_TARGET_X86ORX64
+#if LJ_TARGET_PSP2
+  SceUID block;
+  void *base = (void *)((uintptr_t)start & ~(uintptr_t)0xFFFFF);
+  block = sceKernelFindMemBlockByAddr(base, 0);
+  /* Removed Assertion */
+  sceKernelSyncVMDomain(block, start, (char *)end-(char *)start);
+#elif LJ_TARGET_X86ORX64
   UNUSED(start); UNUSED(end);
 #elif LJ_TARGET_WINDOWS
   FlushInstructionCache(GetCurrentProcess(), start, (char *)end-(char *)start);
@@ -77,7 +87,53 @@ static LJ_NORET LJ_NOINLINE void mcode_protfail(jit_State *J)
 }
 #endif
 
-#if LJ_TARGET_WINDOWS
+#if LJ_TARGET_PSP2
+
+/* The VM domain switch is global: it changes all VM memblocks at once.
+** So the protection of one area cannot change alone. See lj_mcode_patch.
+*/
+#define LUAJIT_PSP2PROTECT_MCODE
+#define MCPROT_RX	0
+#define MCPROT_RWX	1
+
+static int mcode_domain(int prot)
+{
+  return prot == MCPROT_RX ? sceKernelCloseVMDomain() : sceKernelOpenVMDomain();
+}
+
+/* The kernel picks the address of a VM memblock, so the hint is ignored. */
+static void *mcode_alloc_at(uintptr_t hint, size_t sz, int prot)
+{
+  void *p;
+  SceUID block = sceKernelAllocMemBlockForVM("LuaJITCodeMemBlock", sz);
+  UNUSED(hint);
+  if (block < 0) return NULL;
+  if (sceKernelGetMemBlockBase(block, &p) < 0 || mcode_domain(prot) < 0) {
+    sceKernelFreeMemBlock(block);
+    return NULL;
+  }
+  return p;
+}
+
+static void mcode_free(void *p, size_t sz)
+{
+  SceUID block = sceKernelFindMemBlockByAddr(p, 0);
+  UNUSED(sz);
+  if (block >= 0) sceKernelFreeMemBlock(block);
+}
+
+static void mcode_setprot(jit_State *J, void *p, size_t sz, int prot)
+{
+  int err = mcode_domain(prot);
+  UNUSED(p); UNUSED(sz);
+#if LUAJIT_SECURITY_MCODE != 0
+  if (err < 0) mcode_protfail(J);
+#else
+  UNUSED(J); UNUSED(err);
+#endif
+}
+
+#elif LJ_TARGET_WINDOWS
 
 #define MCPROT_RW	PAGE_READWRITE
 #define MCPROT_RX	PAGE_EXECUTE_READ
@@ -236,6 +292,12 @@ static void mcode_protect(jit_State *J, int prot)
 }
 
 #else
+#if defined(LUAJIT_PSP2PROTECT_MCODE)
+
+#define MCPROT_GEN  MCPROT_RWX
+#define MCPROT_RUN  MCPROT_RX
+
+#else
 
 /* This is the default behaviour and much safer:
 **
@@ -247,6 +309,8 @@ static void mcode_protect(jit_State *J, int prot)
 */
 #define MCPROT_GEN	MCPROT_RW
 #define MCPROT_RUN	MCPROT_RX
+
+#endif
 
 /* Change protection of MCode area. */
 static void mcode_protect(jit_State *J, int prot)
@@ -431,7 +495,12 @@ MCode *lj_mcode_patch(jit_State *J, MCode *ptr, int finish)
     if (J->mcarea == ptr)
       mcode_protect(J, MCPROT_RUN);
     else
+#ifdef LUAJIT_PSP2PROTECT_MCODE
+      /* The switch is global: keep the state of the current area. */
+      mcode_setprot(J, NULL, 0, J->mcprot);
+#else
       mcode_setprot(J, ptr, ((MCLink *)ptr)->size, MCPROT_RUN);
+#endif
     return NULL;
   } else {
     uintptr_t base = (uintptr_t)J->mcarea, addr = (uintptr_t)ptr;

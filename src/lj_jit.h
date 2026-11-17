@@ -104,6 +104,15 @@
 
 /* -- JIT engine parameters ----------------------------------------------- */
 
+#if LJ_TARGET_PSP2
+/* Each area is one VM memblock (1 MB granularity). The kernel picks the address. */
+#define JIT_P_sizemcode_DEFAULT	1024
+#define JIT_P_maxmcode_DEFAULT	8192
+#else
+#define JIT_P_sizemcode_DEFAULT	64
+#define JIT_P_maxmcode_DEFAULT	2048
+#endif
+
 /* Optimization parameters and their defaults. Length is a char in octal! */
 #define JIT_PARAMDEF(_) \
   _(\010, maxtrace,	1000)	/* Max. # of traces in cache. */ \
