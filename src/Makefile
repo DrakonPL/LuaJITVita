@@ -358,7 +358,7 @@ else
     TARGET_XLIBS+= -ldl
   endif
   ifeq (PSP2,$(TARGET_SYS))
-    TARGET_XLIBS+= -ldl -ltaihen_stub -lSceKernelModulemgr_stub -lSceSblSsMgr_stub -lSceLibKernel_stub -lSceSysmodule_stub
+    TARGET_XLIBS+= -ldl -ltaihen_stub -lSceKernelModulemgr_stub -lSceSblSsMgr_stub -lSceLibKernel_stub -lSceSysmodule_stub -lpthread
   endif
 endif
 endif

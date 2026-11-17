@@ -638,7 +638,9 @@
 #if defined(LUAJIT_DISABLE_PROFILE)
 #define LJ_HASPROFILE		0
 #elif LJ_TARGET_PSP2
-#define LJ_HASPROFILE		0
+/* The app must link -lpthread. */
+#define LJ_HASPROFILE		1
+#define LJ_PROFILE_PTHREAD	1
 #elif LJ_TARGET_POSIX
 #define LJ_HASPROFILE		1
 #define LJ_PROFILE_SIGPROF	1
