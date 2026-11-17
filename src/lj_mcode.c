@@ -40,6 +40,8 @@ void sys_icache_invalidate(void *start, size_t len);
 
 #if LJ_TARGET_PSP2
 #include <psp2/kernel/sysmem.h>
+/* Not in the vitasdk headers. sceKernelFreeMemBlock does not release a VM memblock. */
+extern int sceKernelFreeMemBlockForVM(SceUID uid);
 #endif
 
 /* Synchronize data/instruction cache. */
@@ -109,7 +111,7 @@ static void *mcode_alloc_at(uintptr_t hint, size_t sz, int prot)
   UNUSED(hint);
   if (block < 0) return NULL;
   if (sceKernelGetMemBlockBase(block, &p) < 0 || mcode_domain(prot) < 0) {
-    sceKernelFreeMemBlock(block);
+    sceKernelFreeMemBlockForVM(block);
     return NULL;
   }
   return p;
@@ -119,7 +121,7 @@ static void mcode_free(void *p, size_t sz)
 {
   SceUID block = sceKernelFindMemBlockByAddr(p, 0);
   UNUSED(sz);
-  if (block >= 0) sceKernelFreeMemBlock(block);
+  if (block >= 0) sceKernelFreeMemBlockForVM(block);
 }
 
 static void mcode_setprot(jit_State *J, void *p, size_t sz, int prot)
