@@ -73,11 +73,13 @@ static const char *clib_extname(lua_State *L, const char *name)
       return name;
 #endif
     }
+#if !LJ_TARGET_PSP2  /* The PSP2 prefix is empty: CLIB_SOPREFIX[1] is out of bounds. */
     if (!(name[0] == CLIB_SOPREFIX[0] && name[1] == CLIB_SOPREFIX[1] &&
 	  name[2] == CLIB_SOPREFIX[2])) {
       name = lj_strfmt_pushf(L, CLIB_SOPREFIX "%s", name);
       L->top--;
     }
+#endif
   }
   return name;
 }
