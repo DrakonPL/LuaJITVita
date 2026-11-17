@@ -1,0 +1,103 @@
+# The Vita build. Run it in the image:
+#   tools/make.sh -f Makefile.vita LIB=rebase [BIG_HEAP=1 | NEAR=1] [ALLOC=nolock] [UNSAFE=1]
+LIB ?= rebase
+BIG_HEAP ?= 0
+NEAR ?= 0
+ALLOC ?= sys
+UNSAFE ?= 0
+LJ := libs/$(LIB)
+
+ifeq ($(BIG_HEAP)$(NEAR),11)
+$(error BIG_HEAP=1 and NEAR=1 cannot be used together)
+endif
+
+ifeq ($(BIG_HEAP),1)
+VARIANT := $(LIB)_bigheap
+HEAP_DEFS := -DBIG_HEAP=1
+else ifeq ($(NEAR),1)
+# An 8 MB newlib heap: the first VM block is then in the bl range of the VM code.
+VARIANT := $(LIB)_near
+HEAP_DEFS := -DNEAR_HEAP=1
+else
+VARIANT := $(LIB)
+HEAP_DEFS :=
+endif
+
+# ALLOC=nolock: each Lua state gets a TLSF pool on one 32 MB memblock, with no lock.
+ifeq ($(ALLOC),nolock)
+VARIANT := $(VARIANT)_nolock
+HEAP_DEFS += -DLJB_ALLOC_NOLOCK=1
+else ifneq ($(ALLOC),sys)
+$(error ALLOC must be sys or nolock)
+endif
+
+# An unsafe eboot.bin needs "Enable Unsafe Homebrew" in the HENkaku settings.
+ifeq ($(UNSAFE),1)
+VARIANT := $(VARIANT)_unsafe
+FSELF := unsafe
+FSELF_FLAGS :=
+else
+FSELF := safe
+FSELF_FLAGS := -s
+endif
+
+BUILD := build/vita/$(VARIANT)
+VPK := build/vpk/LuaJitBench_$(VARIANT).vpk
+TITLE_ID := LJBN00001
+APP_NAME := LuaJitBench $(VARIANT)
+
+CC := arm-vita-eabi-gcc
+CFLAGS := -std=gnu11 -O2 -g -Wall -Wextra -I$(LJ)/include -DLJB_LIB='"$(LIB)"' -DLJB_FSELF='"$(FSELF)"' $(HEAP_DEFS)
+THIRD_PARTY_CFLAGS := -std=gnu11 -O2 -g -w
+LDFLAGS := -Wl,-q -Wl,--wrap=sceKernelAllocMemBlockForVM -Wl,--wrap=sceKernelOpenVMDomain \
+	-Wl,--wrap=sceKernelCloseVMDomain
+# The libs of the LuaJIT Makefile for PSP2 (with -lpthread for the profiler), then the app libs.
+LDLIBS := $(LJ)/vita/libluajit-5.1.a -ldl -ltaihen_stub -lSceKernelModulemgr_stub -lSceSblSsMgr_stub \
+	-lSceLibKernel_stub -lSceSysmodule_stub -lpthread -lSceCtrl_stub -lScePower_stub -lSceDisplay_stub -lm
+
+SRCS := src/main.c src/runner.c src/bench_api.c src/arena_alloc.c src/probe.c src/platform_vita.c \
+	src/mcode_wrap.c
+OBJS := $(SRCS:src/%.c=$(BUILD)/%.o) $(BUILD)/third_party/debugScreen.o $(BUILD)/third_party/tlsf.o
+
+SCRIPTS := $(shell find scripts -name '*.lua' | sort)
+JIT_FILES := $(sort $(wildcard $(LJ)/vita/jit/*.lua))
+
+all: $(VPK)
+
+$(BUILD)/%.o: src/%.c | $(BUILD)/third_party
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(BUILD)/third_party/debugScreen.o: src/third_party/debugScreen.c | $(BUILD)/third_party
+	$(CC) $(THIRD_PARTY_CFLAGS) -c $< -o $@
+
+$(BUILD)/third_party/tlsf.o: src/third_party/tlsf/tlsf.c | $(BUILD)/third_party
+	$(CC) $(THIRD_PARTY_CFLAGS) -c $< -o $@
+
+$(BUILD)/third_party:
+	mkdir -p $@
+
+$(BUILD)/LuaJitBench.elf: $(OBJS) $(LJ)/vita/libluajit-5.1.a
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
+
+$(BUILD)/LuaJitBench.velf: $(BUILD)/LuaJitBench.elf
+	vita-elf-create $< $@
+
+$(BUILD)/eboot.bin: $(BUILD)/LuaJitBench.velf
+	vita-make-fself $(FSELF_FLAGS) $< $@
+
+$(BUILD)/param.sfo:
+	vita-mksfoex -s TITLE_ID=$(TITLE_ID) "$(APP_NAME)" $@
+
+$(VPK): $(BUILD)/eboot.bin $(BUILD)/param.sfo $(SCRIPTS) $(JIT_FILES)
+	mkdir -p $(dir $@)
+	vita-pack-vpk -s $(BUILD)/param.sfo -b $(BUILD)/eboot.bin \
+		$(foreach f,$(SCRIPTS),-a $(f)=$(f)) \
+		$(foreach f,$(JIT_FILES),-a $(f)=jit/$(notdir $(f))) \
+		$@
+
+clean:
+	rm -rf $(BUILD) $(VPK)
+
+-include $(OBJS:.o=.d)
+
+.PHONY: all clean

@@ -1,0 +1,50 @@
+# The Linux x64 build of the runner, for the reference numbers. Run it in the image:
+#   tools/make.sh -f Makefile.host run [ALLOC=nolock]
+LIB ?= rebase
+ALLOC ?= sys
+LJ := libs/$(LIB)
+BUILD := build/host_$(ALLOC)
+RESULTS := results/host
+
+ifeq ($(ALLOC),nolock)
+ALLOC_DEFS := -DLJB_ALLOC_NOLOCK=1
+else ifeq ($(ALLOC),sys)
+ALLOC_DEFS :=
+else
+$(error ALLOC must be sys or nolock)
+endif
+
+CC := gcc
+CFLAGS := -std=gnu11 -O2 -Wall -Wextra -I$(LJ)/include \
+	-DLJB_LIB='"$(LIB)"' -DLJB_HOST_PACKAGE_PATH='"scripts/?.lua;$(LJ)/host/?.lua"' $(ALLOC_DEFS)
+THIRD_PARTY_CFLAGS := -std=gnu11 -O2 -w
+LDLIBS := $(LJ)/host/libluajit-5.1.a -lm -ldl
+
+SRCS := src/main.c src/runner.c src/bench_api.c src/arena_alloc.c src/platform_host.c
+OBJS := $(SRCS:src/%.c=$(BUILD)/%.o) $(BUILD)/third_party/tlsf.o
+BIN := $(BUILD)/ljbench
+
+all: $(BIN)
+
+$(BIN): $(OBJS) $(LJ)/host/libluajit-5.1.a
+	$(CC) -o $@ $(OBJS) $(LDLIBS)
+
+$(BUILD)/%.o: src/%.c | $(BUILD)/third_party
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(BUILD)/third_party/tlsf.o: src/third_party/tlsf/tlsf.c | $(BUILD)/third_party
+	$(CC) $(THIRD_PARTY_CFLAGS) -c $< -o $@
+
+$(BUILD)/third_party:
+	mkdir -p $@
+
+run: $(BIN)
+	mkdir -p $(RESULTS)
+	./$(BIN) $(RESULTS)
+
+clean:
+	rm -rf $(BUILD)
+
+-include $(OBJS:.o=.d)
+
+.PHONY: all run clean

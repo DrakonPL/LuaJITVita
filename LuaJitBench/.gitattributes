@@ -1,0 +1,7 @@
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile* text eol=lf
+*.a binary
+*.c text eol=lf
+*.h text eol=lf
+*.lua text eol=lf
