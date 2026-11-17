@@ -132,9 +132,9 @@
   _(\011, recunroll,	2)	/* Min. unroll for true recursion. */ \
   \
   /* Size of each machine code area (in KBytes). */ \
-  _(\011, sizemcode,	64) \
+  _(\011, sizemcode,	JIT_P_sizemcode_DEFAULT) \
   /* Max. total size of all machine code areas (in KBytes). */ \
-  _(\010, maxmcode,	2048) \
+  _(\010, maxmcode,	JIT_P_maxmcode_DEFAULT) \
   /* End of list. */
 
 enum {
