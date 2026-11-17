@@ -71,6 +71,27 @@ void lj_mcode_sync(void *start, void *end)
 #endif
 }
 
+#if LJ_TARGET_PSP2
+/* The VM domain switch is global: it changes all VM memblocks at once.
+** The domain is closed at the start. A second open or close fails in the
+** kernel, so the JIT and the FFI callbacks change it only through here.
+*/
+static int mcode_psp2_writable = 0;
+
+/* Make the VM domain writable (1) or executable (0).
+** Returns the old state, or a negative error.
+*/
+int lj_mcode_psp2_domain(int writable)
+{
+  int old = mcode_psp2_writable, err;
+  if (writable == old) return old;
+  err = writable ? sceKernelOpenVMDomain() : sceKernelCloseVMDomain();
+  if (err < 0) return err;
+  mcode_psp2_writable = writable;
+  return old;
+}
+#endif
+
 #endif
 
 #if LJ_HASJIT
@@ -98,18 +119,10 @@ static LJ_NORET LJ_NOINLINE void mcode_protfail(jit_State *J)
 #define MCPROT_RX	0
 #define MCPROT_RWX	1
 
-/* The state of the VM domain of the process. It is closed at the start.
-** Each mcode_alloc_at opens it, so a second open must not reach the kernel.
-*/
-static int mcode_domain_state = MCPROT_RX;
-
 static int mcode_domain(int prot)
 {
-  int err;
-  if (prot == mcode_domain_state) return 0;
-  err = prot == MCPROT_RX ? sceKernelCloseVMDomain() : sceKernelOpenVMDomain();
-  if (err >= 0) mcode_domain_state = prot;
-  return err;
+  int err = lj_mcode_psp2_domain(prot == MCPROT_RWX);
+  return err < 0 ? err : 0;
 }
 
 /* The kernel picks the address of a VM memblock, so the hint is ignored. */
@@ -340,6 +353,13 @@ static void mcode_protect(jit_State *J, int prot)
 
 #define MCODE_RANGE64	((1u << LJ_TARGET_JUMPRANGE) - 0x10000u)
 
+#if LJ_TARGET_PSP2
+/* The kernel ignores the hint, so a second try gets the same block. */
+#define MCODE_ALLOC_TRIES	1
+#else
+#define MCODE_ALLOC_TRIES	16
+#endif
+
 /* Set a memory range for mcode allocation with addr in the middle. */
 static void mcode_setrange(jit_State *J, uintptr_t addr)
 {
@@ -372,8 +392,9 @@ static void *mcode_alloc(jit_State *J, size_t sz)
   uintptr_t hint;
   int i = 0, j;
   if (!J->mcmin)  /* Place initial range near the interpreter code. */
-#if LJ_TARGET_OSX
+#if LJ_TARGET_OSX || LJ_TARGET_PSP2
     goto newrange;  /* But macOS doesn't give us enough space there. */
+			/* And PSP2 ignores the hint. */
 #else
     mcode_setrange(J, (uintptr_t)(void *)lj_vm_exit_handler);
 #endif
@@ -383,7 +404,7 @@ static void *mcode_alloc(jit_State *J, size_t sz)
   hint = (uintptr_t)J->mcarea - sz;
   if (!mcode_inrange(J, hint, sz))  /* Also takes care of NULL J->mcarea. */
     goto probe;
-  for (; i < 16; i++) {
+  for (; i < MCODE_ALLOC_TRIES; i++) {
     void *p = mcode_alloc_at(hint, sz, MCPROT_GEN);
     if (mcode_inrange(J, (uintptr_t)p, sz))
       return p;  /* Success. */

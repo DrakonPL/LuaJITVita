@@ -10,6 +10,9 @@
 
 #if LJ_HASJIT || LJ_HASFFI
 LJ_FUNC void lj_mcode_sync(void *start, void *end);
+#if LJ_TARGET_PSP2
+LJ_FUNC int lj_mcode_psp2_domain(int writable);
+#endif
 #endif
 
 #if LJ_HASJIT
