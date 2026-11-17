@@ -305,6 +305,9 @@ static void callback_mcode_new(CTState *cts)
 {
   size_t sz = (size_t)CALLBACK_MCODE_SIZE;
   void *p, *pe;
+#if LJ_TARGET_PSP2
+  int domain_old = 0;
+#endif
   if (CALLBACK_MAX_SLOT == 0)
     lj_err_caller(cts->L, LJ_ERR_FFI_CBACKOV);
 #if LJ_TARGET_WINDOWS
@@ -319,7 +322,7 @@ static void callback_mcode_new(CTState *cts)
       fail = 1;
     else if (LJ_UNLIKELY(sceKernelGetMemBlockBase(block, &p) < 0))
       fail = 1;
-    else if (sceKernelOpenVMDomain() < 0)
+    else if ((domain_old = lj_mcode_psp2_domain(1)) < 0)
       fail = 1;
     else
       fail = 0;
@@ -352,7 +355,7 @@ static void callback_mcode_new(CTState *cts)
     LJ_WIN_VPROTECT(p, sz, PAGE_EXECUTE_READ, &oprot);
   }
 #elif LJ_TARGET_PSP2
-  sceKernelCloseVMDomain();
+  lj_mcode_psp2_domain(domain_old);  /* The JIT can have the domain open. */
 #elif LJ_TARGET_POSIX
 #if CCMAP_CREATE
   pthread_jit_write_protect_np(1);
