@@ -98,9 +98,18 @@ static LJ_NORET LJ_NOINLINE void mcode_protfail(jit_State *J)
 #define MCPROT_RX	0
 #define MCPROT_RWX	1
 
+/* The state of the VM domain of the process. It is closed at the start.
+** Each mcode_alloc_at opens it, so a second open must not reach the kernel.
+*/
+static int mcode_domain_state = MCPROT_RX;
+
 static int mcode_domain(int prot)
 {
-  return prot == MCPROT_RX ? sceKernelCloseVMDomain() : sceKernelOpenVMDomain();
+  int err;
+  if (prot == mcode_domain_state) return 0;
+  err = prot == MCPROT_RX ? sceKernelCloseVMDomain() : sceKernelOpenVMDomain();
+  if (err >= 0) mcode_domain_state = prot;
+  return err;
 }
 
 /* The kernel picks the address of a VM memblock, so the hint is ignored. */
