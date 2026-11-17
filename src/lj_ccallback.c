@@ -275,6 +275,8 @@ static void *callback_mcode_init(global_State *g, uint32_t *page)
 #elif LJ_TARGET_PSP2
 
 #include <psp2/kernel/sysmem.h>
+/* Not in the vitasdk headers. sceKernelFreeMemBlock does not release a VM memblock. */
+extern int sceKernelFreeMemBlockForVM(SceUID uid);
 
 #elif LJ_TARGET_POSIX
 
@@ -321,8 +323,10 @@ static void callback_mcode_new(CTState *cts)
       fail = 1;
     else
       fail = 0;
-    if (fail)
+    if (fail) {
+      if (block >= 0) sceKernelFreeMemBlockForVM(block);
       lj_err_caller(cts->L, LJ_ERR_FFI_CBACKOV);
+    }
   }
 #elif LJ_TARGET_POSIX
   p = mmap(NULL, sz, PROT_READ|PROT_WRITE|CCPROT_CREATE,
@@ -372,7 +376,7 @@ void lj_ccallback_mcode_free(CTState *cts)
     SceUID block;
     void *base = (void *)((uintptr_t)p & ~(uintptr_t)0xFFFFF);
     block = sceKernelFindMemBlockByAddr(base, 0);
-    sceKernelFreeMemBlock(block);
+    if (block >= 0) sceKernelFreeMemBlockForVM(block);
     UNUSED(sz);
   }
 #elif LJ_TARGET_POSIX
