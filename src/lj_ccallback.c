@@ -23,7 +23,14 @@
 
 /* -- Target-specific handling of callback slots -------------------------- */
 
+#if LJ_TARGET_PSP2
+/* The callback code is one VM memblock, and a VM memblock is 1 MB at least.
+** lj_def.h cannot test LJ_TARGET_PSP2: it is included before lj_arch.h.
+*/
+#define CALLBACK_MCODE_SIZE	(1024*1024)
+#else
 #define CALLBACK_MCODE_SIZE	(LJ_PAGESIZE * LJ_NUM_CBPAGE)
+#endif
 
 #if LJ_OS_NOJIT
 
